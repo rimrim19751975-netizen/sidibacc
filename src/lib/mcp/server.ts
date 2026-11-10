@@ -115,7 +115,7 @@ export function buildMcpServer(): McpServer {
         model: z.enum([VIDEO_CANONICAL, "grok-imagine-video-1.5-preview"]).default(VIDEO_CANONICAL),
         aspect_ratio: z.enum(["auto", "1:1", "16:9", "9:16", "3:2", "2:3"]).default("auto"),
         resolution: z.enum(["480p", "720p", "1080p"]).default("480p"),
-        enable_audio: z.boolean().default(true),
+        enable_audio: z.boolean().default(true).describe("Kept for compatibility: grok-imagine-video-1-5-preview always embeds native synchronized audio, so the generated video has audio regardless."),
         duration: z.number().int().min(1).max(15).default(8).describe("Duration in seconds."),
         wait_seconds: z.number().int().min(0).max(240).default(25),
       },

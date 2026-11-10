@@ -108,7 +108,10 @@ function buildProviderInput(
     if (params.output_format) input.output_format = params.output_format;
     return input;
   }
-  // فيديو
+  // فيديو — الشكل الحقيقي المُختبر بـ curl لدى kie (grok-imagine-video-1-5-preview):
+  // الحقول المقبولة: prompt / image_urls (مصفوفة حتى صورة واحدة) / aspect_ratio / resolution / duration.
+  // لا يوجد حقل enable_audio لدى المزود — الصوت المزامن أصلي دائمًا في هذا الموديل،
+  // وإرسال حقول غير مدعومة يُفشل المهمة لدى المزود بخطأ Internal Error (مُختبر فعليًا).
   if (provider === "cometapi") {
     // وفق توثيق grok/videos على CometAPI: image تُمرَّر داخل كائن image.url (يتولاه المحول)
     const input: Record<string, unknown> = { prompt: params.prompt };
@@ -122,10 +125,9 @@ function buildProviderInput(
     prompt: params.prompt,
     aspect_ratio: params.aspect_ratio ?? "auto",
     resolution: params.resolution ?? "480p",
-    enable_audio: params.enable_audio ?? true,
     duration: params.duration ?? 8,
   };
-  if (params.image_url) input.image_url = params.image_url;
+  if (params.image_url) input.image_urls = [params.image_url]; // مصفوفة وفق الشكل الحقيقي لدى kie
   return input;
 }
 

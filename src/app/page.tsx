@@ -42,11 +42,15 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    void loadHealth();
-    void loadTasks();
+    // التحميل الأول خارج نداء التأثير المتزامن (قاعدة react-hooks/set-state-in-effect)
+    const first = setTimeout(() => {
+      void loadHealth();
+      void loadTasks();
+    }, 0);
     const t = setInterval(loadTasks, 5000); // لوحة المهام تتحدث كل ~5 ثوانٍ
     const h = setInterval(loadHealth, 15000);
     return () => {
+      clearTimeout(first);
       clearInterval(t);
       clearInterval(h);
     };

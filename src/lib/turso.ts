@@ -35,12 +35,13 @@ export function nowIso(): string {
 export function getTurso(): Client {
   if (!client) {
     const url = process.env.TURSO_DATABASE_URL;
-    const authToken = process.env.TURSO_AUTH_TOKEN;
-    if (!url || !authToken) {
-      // إلزامي: لا قاعدة محلية في الإنتاج إطلاقًا
-      throw new Error("متغيرا TURSO_DATABASE_URL و TURSO_AUTH_TOKEN مطلوبان");
+    if (!url) {
+      // إلزامي: TURSO_DATABASE_URL — قاعدة Turso عبر HTTP في الإنتاج (توافق Vercel)
+      throw new Error("متغير TURSO_DATABASE_URL مطلوب");
     }
-    client = createClient({ url, authToken });
+    // التوكن إلزامي مع Turso السحابية؛ قبول غيابه فقط مع قاعدة محلية file: للاختبار المحلي
+    const authToken = process.env.TURSO_AUTH_TOKEN;
+    client = authToken ? createClient({ url, authToken }) : createClient({ url });
   }
   return client;
 }

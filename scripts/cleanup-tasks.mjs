@@ -24,12 +24,14 @@ function loadEnv() {
 loadEnv();
 
 const url = process.env.TURSO_DATABASE_URL;
-const token = process.env.TURSO_AUTH_TOKEN;
-if (!url || !token) {
-  console.error("❌ TURSO_DATABASE_URL / TURSO_AUTH_TOKEN مطلوبان (في .env.local)");
+if (!url) {
+  console.error("❌ TURSO_DATABASE_URL مطلوب (في .env.local)");
   process.exit(1);
 }
-const db = createClient({ url, authToken: token });
+// التوكن إلزامي مع Turso السحابية فقط — قاعدة file: محلية لا تحتاج توكنًا
+const db = process.env.TURSO_AUTH_TOKEN
+  ? createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN })
+  : createClient({ url });
 
 const arg = process.argv[2];
 const val = process.argv[3];

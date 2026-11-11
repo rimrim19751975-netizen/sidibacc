@@ -16,9 +16,10 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
       <head>
-        {/* خط عربي جيد — يُحمَّل من المتصفح دون أي اعتمادية وقت البناء */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* خط عربي جيد — يُحمَّل من المتصفح دون أي اعتمادية وقت البناء.
+            eslint-disable: القاعدة موجهة لـ pages router؛ هنا في App Router
+            ترويسة الجذر تنطبق على كل الصفحات تلقائيًا فلا مشكلة أصلًا. */}
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
           href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap"
           rel="stylesheet"

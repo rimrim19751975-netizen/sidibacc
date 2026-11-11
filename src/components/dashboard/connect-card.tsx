@@ -20,8 +20,9 @@ const TOOLS: { name: string; desc: string }[] = [
 export function ConnectCard({ health }: { health: HealthDto | null }) {
   const [origin, setOrigin] = useState("");
   useEffect(() => {
-    // الأصل يُقرأ في المتصفح بعد التحميل
-    setOrigin(window.location.origin);
+    // الأصل يُقرأ في المتصفح بعد التحميل — خارج نداء التأثير المتزامن (قاعدة react-hooks)
+    const id = setTimeout(() => setOrigin(window.location.origin), 0);
+    return () => clearTimeout(id);
   }, []);
   const mcpUrl = `${origin}/mcp`;
   const authRequired = health?.authRequired ?? false;

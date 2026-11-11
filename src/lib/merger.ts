@@ -137,11 +137,14 @@ export async function deleteJob(jobId: string): Promise<boolean> {
   }
 }
 
-// GET /api/config — فحص جهوزية الخدمة (مهلة 4 ثوانٍ)
+// GET /api/config — فحص جهوزية الخدمة (مهلة 4 ثوانٍ) — يُرسل الترويسة أيضًا لأن الخدمة المحمية ترفض النداءات البلا توكن
 export async function mergerHealthy(): Promise<boolean> {
   if (!mergerConfigured()) return false;
   try {
-    const res = await fetch(`${MERGER_BASE}/api/config`, { signal: AbortSignal.timeout(4_000) });
+    const res = await fetch(`${MERGER_BASE}/api/config`, {
+      headers: mergerHeaders(),
+      signal: AbortSignal.timeout(4_000),
+    });
     return res.ok;
   } catch {
     return false;

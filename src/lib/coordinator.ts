@@ -17,7 +17,7 @@ import {
   type TaskRow,
 } from "./turso";
 import { getKeyPool, findKey, bumpKey, classifyProviderError, isKeyOrBalanceError, type KeyRow } from "./keys";
-import { resolveModel, defaultModelOfType, type ModelDef, type ProviderId } from "./models";
+import { resolveModel, MODELS, defaultModelOfType, type ModelDef, type ProviderId } from "./models";
 import { getAdapter, ProviderError, type AttemptEntry, type KeyRef } from "./providers";
 import * as merger from "./merger";
 
@@ -141,11 +141,15 @@ export interface StartGenerationOptions {
   notify?: (message: string, progress: number, total: number) => void;
 }
 
+function modelsHint(): string {
+  return MODELS.map((m) => `${m.canonical} (${m.type === "image" ? "صور" : "فيديو"})`).join("، ");
+}
+
 export async function startGeneration(opts: StartGenerationOptions): Promise<TaskRow> {
   const def = resolveModel(opts.params.model as string);
   if (!def || def.type !== opts.type) {
     throw new ParamsRejection(
-      `❌ موديل غير معروف: ${String(opts.params.model ?? "")}. المتاح: gpt-image-2-6/flare-text-to-image (صور) و grok-imagine-video-1-5-preview (فيديو).`,
+      `❌ موديل غير معروف: ${String(opts.params.model ?? "")}. المتاح: ${modelsHint()}.`,
     );
   }
   const pool = await getKeyPool(def.providers);

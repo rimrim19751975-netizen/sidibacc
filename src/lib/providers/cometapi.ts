@@ -3,6 +3,9 @@
 //        والاستعلام: GET /v1/images/generations/{task_id}
 // فيديو Grok: POST /grok/v1/videos/generations → {"request_id":"..."}
 //        الاستعلام: GET /grok/v1/videos/{request_id} → {status: pending|done|failed|expired, progress, video:{url}, error}
+// فيديو Seedance (الأسرع): POST /v1/videos (multipart/form-data) → {"id":"task_...","status":"queued"}
+//        الاستعلام: GET /v1/videos/{id} → {status: queued|in_progress|completed|failed|error, progress, video_url}
+//        يُخزَّن معرف المهمة بالبادئة "seedance:" لتمييز عائلة الاستعلام عند checkTask
 import { ProviderError, type CheckResult, type KeyRef, type ProviderAdapter } from "./types";
 
 // يمكن تجاوز العنوان الأساسي عبر البيئة إن لزم
@@ -68,6 +71,66 @@ function urlsFromData(data: unknown): string[] {
   return urls;
 }
 
+/* ---------- Seedance (POST /v1/videos، multipart) ---------- */
+
+const SEEDANCE_PREFIX = "seedance:";
+
+// جدول المقاسات الدقيقة الوثّقية لعائلة Seedance 2.0 (Fast/Mini/1.5/2.0) — 480p و720p فقط
+const SEEDANCE_SIZES: Record<string, Record<string, string>> = {
+  "480p": { "16:9": "864x496", "4:3": "752x560", "1:1": "640x640", "3:4": "560x752", "9:16": "496x864", "21:9": "992x432" },
+  "720p": { "16:9": "1280x720", "4:3": "1112x834", "1:1": "960x960", "3:4": "834x1112", "9:16": "720x1280", "21:9": "1470x630" },
+};
+
+function seedanceSize(aspect?: unknown, resolution?: unknown): string {
+  const ar = typeof aspect === "string" && SEEDANCE_SIZES["480p"][aspect] ? aspect : "16:9";
+  const res = resolution === "720p" ? "720p" : "480p"; // Fast يدعم 480p/720p فقط — نُنزّل 1080p تلقائيًا
+  return SEEDANCE_SIZES[res][ar];
+}
+
+async function seedanceCreate(key: KeyRef, model: string, input: Record<string, unknown>): Promise<{ providerTaskId: string }> {
+  const fd = new FormData();
+  fd.append("model", model);
+  fd.append("prompt", String(input.prompt ?? ""));
+  const duration = typeof input.duration === "number" && input.duration >= 2 ? Math.round(input.duration) : 5;
+  fd.append("seconds", String(Math.min(15, Math.max(4, duration)))); // 2.0 family: 4-15
+  fd.append("size", seedanceSize(input.aspect_ratio, input.resolution));
+  if (typeof input.image_url === "string" && input.image_url) {
+    fd.append("input_reference", input.image_url); // image-to-video عبر رابط عام مباشر
+  }
+  const res = await fetch(`${COMET_BASE}/v1/videos`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key.api_key}` }, // content-type مع boundary يضبطه fetch تلقائيًا
+    body: fd,
+    signal: AbortSignal.timeout(CREATE_TIMEOUT),
+  });
+  const json = await parseComet(res);
+  const id = json?.id ?? json?.task_id;
+  if (!id) throw new ProviderError(500, "استجابة إنشاء Seedance بلا معرّف مهمة");
+  return { providerTaskId: `${SEEDANCE_PREFIX}${String(id)}` };
+}
+
+async function seedanceCheck(key: KeyRef, providerTaskId: string): Promise<CheckResult> {
+  const id = providerTaskId.slice(SEEDANCE_PREFIX.length);
+  const res = await fetch(`${COMET_BASE}/v1/videos/${encodeURIComponent(id)}`, {
+    headers: authHeaders(key),
+    signal: AbortSignal.timeout(CHECK_TIMEOUT),
+  });
+  const json = await parseComet(res);
+  const status = String(json?.status ?? "queued").toLowerCase();
+  const progress = typeof json?.progress === "number" ? json.progress : undefined;
+  if (status === "completed") {
+    const url = json?.video_url;
+    if (!url) return { status: "failed", error: "اكتملت المهمة لدى المزود دون رابط فيديو" };
+    return { status: "completed", urls: [String(url)], progress: 100 };
+  }
+  if (status === "failed" || status === "error") {
+    const raw = typeof json?.error === "string" ? json.error : json?.error ? JSON.stringify(json.error) : json?.message ?? "فشل المزود دون تفاصيل";
+    return { status: "failed", error: String(raw) };
+  }
+  // queued | in_progress
+  return { status: "processing", progress: progress ?? (status === "in_progress" ? 40 : 15) };
+}
+
 export const cometApiAdapter: ProviderAdapter = {
   // صور CometAPI تُعالج "تزامنيًا" من وجهة نظر المنسّق: نتيجة فورية أو استقصاء قصير لمهمة
   async createImageSync(key, model, input) {
@@ -109,6 +172,8 @@ export const cometApiAdapter: ProviderAdapter = {
   },
 
   async createTask(key, model, input) {
+    // عائلة Seedance عبر /v1/videos (multipart) — الأسرع؛ ما عدا ذلك → Grok عبر /grok/v1/videos/generations
+    if (/^(doubao-)?seedance/.test(model)) return seedanceCreate(key, model, input);
     // فيديو Grok: الصورة الأولى تمرر داخل كائن image.url وفق التوثيق
     const body: Record<string, unknown> = { model, prompt: String(input.prompt ?? "") };
     if (typeof input.duration === "number") body.duration = input.duration;
@@ -129,6 +194,8 @@ export const cometApiAdapter: ProviderAdapter = {
   },
 
   async checkTask(key, providerTaskId) {
+    // مهام Seedance تُخزَّن ببادئة seedance: — تُستعلم من /v1/videos/{id}
+    if (providerTaskId.startsWith(SEEDANCE_PREFIX)) return seedanceCheck(key, providerTaskId);
     const res = await fetch(`${COMET_BASE}/grok/v1/videos/${encodeURIComponent(providerTaskId)}`, {
       headers: authHeaders(key),
       signal: AbortSignal.timeout(CHECK_TIMEOUT),

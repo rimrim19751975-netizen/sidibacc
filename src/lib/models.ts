@@ -18,11 +18,23 @@ const KIE_VIDEO_MODEL = process.env.KIE_VIDEO_MODEL || "grok-imagine-video-1-5-p
 // الصور: gpt-image-2.5-flare (نفس عائلة flare المدعومة رسميًا مع خلفية شفافة) — الفيديو: grok-imagine-video
 const COMETAPI_IMAGE_MODEL = process.env.COMETAPI_IMAGE_MODEL || "gpt-image-2.5-flare";
 const COMETAPI_VIDEO_MODEL = process.env.COMETAPI_VIDEO_MODEL || "grok-imagine-video";
+// الفيديو السريع: عائلة Seedance عبر POST /v1/videos — الأسرع لدى CometAPI
+const COMETAPI_SEEDANCE_MODEL = process.env.COMETAPI_SEEDANCE_MODEL || "doubao-seedance-2-0-fast";
 
 export const IMAGE_CANONICAL = "gpt-image-2-6/flare-text-to-image";
 export const VIDEO_CANONICAL = "grok-imagine-video-1-5-preview";
+export const SEEDANCE_FAST_CANONICAL = "doubao-seedance-2-0-fast";
 
 export const MODELS: ModelDef[] = [
+  {
+    // الفيديو الافتراضي: Seedance 2.0 Fast — الأسرع لدى CometAPI (ثوانٍ قليلة بدل دقائق لدى Grok)
+    // متاح عبر CometAPI فقط حاليًا — providerModel.kie فارغ عمدًا ولن يُستدعى أبدًا (ليس في providers)
+    canonical: SEEDANCE_FAST_CANONICAL,
+    aliases: [SEEDANCE_FAST_CANONICAL, "seedance-2-0-fast", "seedance-fast"],
+    type: "video",
+    providers: ["cometapi"],
+    providerModel: { kie: "", cometapi: COMETAPI_SEEDANCE_MODEL },
+  },
   {
     canonical: IMAGE_CANONICAL,
     aliases: [IMAGE_CANONICAL, "gpt-image-2.6/flare-text-to-image", "gpt-image-2.6-flare-text-to-image"],
@@ -31,6 +43,7 @@ export const MODELS: ModelDef[] = [
     providerModel: { kie: KIE_IMAGE_MODEL, cometapi: COMETAPI_IMAGE_MODEL },
   },
   {
+    // بديل الفيديو الأصلي (أبطأ لكن مدعوم لدى kie وCometAPI معًا) — يبقى متاحًا بالاسم القديم
     canonical: VIDEO_CANONICAL,
     aliases: [VIDEO_CANONICAL, "grok-imagine-video-1.5-preview"],
     type: "video",

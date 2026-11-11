@@ -2,7 +2,7 @@
 // الأوصاف إنجليزية دقيقة (يقرأها العميل)، ونتائج الاستدعاء عربية.
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { IMAGE_CANONICAL, VIDEO_CANONICAL } from "../models";
+import { MODELS, IMAGE_CANONICAL, SEEDANCE_FAST_CANONICAL, type ModelDef } from "../models";
 import {
   startGeneration,
   startMerge,
@@ -13,7 +13,13 @@ import {
 } from "../coordinator";
 import { formatTaskForModel, formatNoKeys, formatMediaList } from "../format";
 
-export const SERVER_INFO = { name: "media-generator-mcp", version: "1.2.0" } as const;
+export const SERVER_INFO = { name: "media-generator-mcp", version: "1.3.0" } as const;
+
+// قوائم موديلات الأدوات تُشتق من سجل الموديلات — موديل جديد يظهر تلقائيًا بلا تعديل هنا
+function modelEnumOf(type: ModelDef["type"]): [string, ...string[]] {
+  const names = MODELS.filter((m) => m.type === type).flatMap((m) => [m.canonical, ...m.aliases]);
+  return [...new Set(names)] as [string, ...string[]];
+}
 
 // نص التوجيهات الجاهز المُرسل مع initialize — يحمل قواعد المتابعة والتبديل الصامت
 export const SERVER_INSTRUCTIONS = `AI media generation server (kie.ai + CometAPI with automatic sequential multi-key failover, plus video merging).
@@ -73,7 +79,7 @@ export function buildMcpServer(): McpServer {
         "Generate an image with gpt-image-2-6/flare-text-to-image (automatic silent failover across all active API keys in strict addition order). Returns the ready image URL if it completes within the wait window; otherwise returns a task_id — call get_task every ~10 seconds until completed, then show the URL and stop.",
       inputSchema: {
         prompt: z.string().min(1).describe("What to draw. Detailed prompts give better results."),
-        model: z.enum([IMAGE_CANONICAL, "gpt-image-2.6/flare-text-to-image"]).default(IMAGE_CANONICAL),
+        model: z.enum(modelEnumOf("image")).default(IMAGE_CANONICAL),
         aspect_ratio: z
           .enum(["auto", "1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "21:9", "9:21", "3:1", "1:3"])
           .default("auto"),
@@ -105,17 +111,22 @@ export function buildMcpServer(): McpServer {
     {
       title: "Generate video",
       description:
-        "Generate a video with grok-imagine-video-1-5-preview (native synchronized audio — dialogue in the prompt is spoken; optional image-to-video). Video takes minutes: a short wait with live progress streaming, then a task_id — track it with get_task every ~10 seconds until completed, then show the URL and stop.",
+        "Generate a video. Default model doubao-seedance-2-0-fast (fastest, usually under ~2 minutes; select 'grok-imagine-video-1-5-preview' for native synchronized dialogue audio). Optional image-to-video via image_url. A short wait with live progress streaming returns a task_id — track it with get_task every ~10 seconds until completed, then show the URL and stop.",
       inputSchema: {
         prompt: z
           .string()
           .max(4096)
-          .describe("Scene description. Dialogue in the prompt is spoken in the video."),
+          .describe("Scene description. With the grok model, dialogue in the prompt is spoken in the video."),
         image_url: z.string().optional().describe("Optional public image URL as the first frame (image-to-video)."),
-        model: z.enum([VIDEO_CANONICAL, "grok-imagine-video-1.5-preview"]).default(VIDEO_CANONICAL),
-        aspect_ratio: z.enum(["auto", "1:1", "16:9", "9:16", "3:2", "2:3"]).default("auto"),
+        model: z.enum(modelEnumOf("video")).default(SEEDANCE_FAST_CANONICAL),
+        aspect_ratio: z.enum(["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"]).default("auto"),
         resolution: z.enum(["480p", "720p", "1080p"]).default("480p"),
-        enable_audio: z.boolean().default(true).describe("Kept for compatibility: grok-imagine-video-1-5-preview always embeds native synchronized audio, so the generated video has audio regardless."),
+        enable_audio: z
+          .boolean()
+          .default(true)
+          .describe(
+            "Kept for compatibility: audio behavior is native to each model (grok embeds synchronized audio; seedance generates its own sound), so this flag is ignored.",
+          ),
         duration: z.number().int().min(1).max(15).default(8).describe("Duration in seconds."),
         wait_seconds: z.number().int().min(0).max(240).default(25),
       },

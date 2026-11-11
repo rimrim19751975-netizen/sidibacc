@@ -32,14 +32,25 @@ export function classifyProviderError(status: number | undefined, message: strin
   const s = status ?? 0;
   const m = (message || "").toLowerCase();
   const hit = (re: RegExp) => re.test(m);
+  // إشارات صريحة قوية في الرسالة تتقدم على كود الحالة: بعض المزودين يلفّون
+  // خطأ الرصيد/المفتاح داخل 429/5xx أو ردود WAF — مُختبر فعليًا مع kie.ai
+  // ("Credits insufficient" تصل أحيانًا بحالة 500/429 فبقيت المفاتيح نشطة ظاهريًا)
+  const strongAuth = hit(
+    /invalid api key|incorrect api key|api key.{0,24}(invalid|incorrect|unauthorized|expired)|unauthorized|authentication|forbidden|signature invalid|المفتاح غير صالح/,
+  );
+  const strongBalance = hit(
+    /insufficient|out of credits|balance (isn'?t|is not|no) enough|not enough (balance|credit)|please top up|top up to continue|余额不足|الرصيد غير كافٍ|نفد الرصيد/,
+  );
   // مفتاح مرفوض → تعطيل تلقائي ثم الانتقال للمفتاح التالي
-  if (s === 401 || s === 403 || hit(/invalid api key|unauthorized|forbidden|authentication/)) return "disabled";
+  if (s === 401 || s === 403 || strongAuth) return "disabled";
   // نفاد الرصيد الصريح 402
   if (s === 402) return "exhausted";
-  // 429 و5xx → مؤقتة دائمًا حتى لو ذكرت الرسالة "quota" (تحديد المعدل لا يعني نفاد الرصيد)
+  // نفاد رصيد صريح بالرسالة — يتقدم على 429/5xx لأنه ليس تحديد معدل
+  if (strongBalance) return "exhausted";
+  // 429 و5xx بلا إشارة رصيد صريحة → مؤقتة دائمًا (تحديد المعدل لا يعني نفاد الرصيد)
   if (s === 429 || s >= 500) return "temporary";
-  // نفاد الرصيد بالرسالة — يُفحص قبل 400 لأن بعض المزودين يرسلونه بحالة 400
-  if (hit(/insufficient|quota|balance|credit|out of credits|exhausted|充值/)) return "exhausted";
+  // نفاد الرصيد بالرسالة في أخطاء 4xx العادية — يُفحص قبل 400 لأن بعض المزودين يرسلونه بحالة 400
+  if (hit(/quota|balance|credit|exhausted|充值/)) return "exhausted";
   // الموديل غير مدعوم لدى هذا المزود → ننتقل لمزود آخر
   if ((s === 400 || s === 404 || s === 422) && hit(/model not found|unsupported model/)) return "provider";
   // خطأ معطيات الطلب — توقف فورًا: تبديل المفاتيح لن يحلّه

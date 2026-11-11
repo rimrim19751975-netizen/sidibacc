@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.env*
+.env.*
+db
+scripts
+merger-service
+*.log
+dev.log
+server.log
+.DS_Store

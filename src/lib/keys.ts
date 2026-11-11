@@ -141,6 +141,9 @@ export async function bumpKey(
       status = CASE
         WHEN ? = 'disabled' THEN 'disabled'
         WHEN ? = 'exhausted' AND status = 'active' THEN 'exhausted'
+        -- نجاح فعلي = المفتاح يعمل مجددًا: إعادة تعيين exhausted إلى active
+        -- (disabled يدوي لا يُتجاوز أبدًا — قرار المستخدم محترم)
+        WHEN ? = 1 AND status = 'exhausted' THEN 'active'
         ELSE status END
       WHERE id = ?`,
     args: [
@@ -151,6 +154,7 @@ export async function bumpKey(
       opts.error ?? null,
       opts.errorClass === "disabled" ? "disabled" : "",
       opts.errorClass === "exhausted" ? "exhausted" : "",
+      opts.ok ? 1 : 0,
       id,
     ],
   });

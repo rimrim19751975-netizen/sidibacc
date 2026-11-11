@@ -14,8 +14,10 @@ export interface ModelDef {
 
 const KIE_IMAGE_MODEL = process.env.KIE_IMAGE_MODEL || "gpt-image-2-6/flare-text-to-image";
 const KIE_VIDEO_MODEL = process.env.KIE_VIDEO_MODEL || "grok-imagine-video-1-5-preview";
-const COMETAPI_IMAGE_MODEL = process.env.COMETAPI_IMAGE_MODEL || "gpt-image-2.6-flare-text-to-image";
-const COMETAPI_VIDEO_MODEL = process.env.COMETAPI_VIDEO_MODEL || "grok-imagine-video-1-5-preview";
+// أسماء CometAPI من كتالوجها الحيّ (GET https://api.cometapi.com/api/models) — مُتحقَّق منه فعليًا 2026-11:
+// الصور: gpt-image-2.5-flare (نفس عائلة flare المدعومة رسميًا مع خلفية شفافة) — الفيديو: grok-imagine-video
+const COMETAPI_IMAGE_MODEL = process.env.COMETAPI_IMAGE_MODEL || "gpt-image-2.5-flare";
+const COMETAPI_VIDEO_MODEL = process.env.COMETAPI_VIDEO_MODEL || "grok-imagine-video";
 
 export const IMAGE_CANONICAL = "gpt-image-2-6/flare-text-to-image";
 export const VIDEO_CANONICAL = "grok-imagine-video-1-5-preview";

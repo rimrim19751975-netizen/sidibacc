@@ -6,6 +6,7 @@ import { Activity, Database, ShieldCheck } from "lucide-react";
 import { KeysCard } from "@/components/dashboard/keys-card";
 import { TasksCard } from "@/components/dashboard/tasks-card";
 import { ConnectCard } from "@/components/dashboard/connect-card";
+import { SetupPanel } from "@/components/dashboard/setup-panel";
 import type { HealthDto, KeyDto, TaskDto } from "@/components/dashboard/bits";
 
 interface Stats {
@@ -83,6 +84,11 @@ export default function Home() {
                 <Database className="size-3.5" />
                 Turso متصل
               </span>
+            ) : health.database === "env-missing" ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">
+                <Database className="size-3.5" />
+                متغيرات القاعدة غير مضبوطة على المنصة
+              </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
                 <Database className="size-3.5" />
@@ -97,7 +103,7 @@ export default function Home() {
                     : "border-amber-200 bg-amber-50 text-amber-700"
                 }`}
               >
-                خدمة الدمج: {health.merger.healthy ? "جاهزة" : "غير مضبوطة"}
+                خدمة الدمج: {health.merger.healthy ? "جاهزة" : health.merger.configured === false ? "غير مضبوطة" : "لا تستجيب"}
               </span>
             )}
             {health?.authRequired && (
@@ -112,6 +118,8 @@ export default function Home() {
 
       {/* البطاقات الثلاث */}
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-6">
+        {/* التشخيص الذاتي — يظهر فقط عند نقص متغيرات البيئة أو فشل الاتصال */}
+        <SetupPanel health={health} />
         <div className="grid gap-6 lg:grid-cols-2">
           <KeysCard refreshTick={refreshTick} />
           <TasksCard tasks={tasks} stats={stats} />

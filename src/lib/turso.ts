@@ -89,14 +89,22 @@ export async function ensureSchema(): Promise<void> {
   return schemaPromise;
 }
 
-export async function dbHealthy(): Promise<boolean> {
+// تشخيص ثلاثي لحالة القاعدة — يميّز «المتغيرات غير مضبوطة على المنصة» عن «فشل اتصال فعلي»
+// env-missing = TURSO_DATABASE_URL غير موجود في بيئة التشغيل (نشر بلا إعداد متغيرات)
+// error = المتغيرات مضبوطة لكن الاتصال فشل (توكن خاطئ/منتهي، شبكة، انقطاع Turso)
+export async function dbStatus(): Promise<"connected" | "env-missing" | "error"> {
+  if (!process.env.TURSO_DATABASE_URL?.trim()) return "env-missing";
   try {
     await ensureSchema();
     await getTurso().execute("SELECT 1");
-    return true;
+    return "connected";
   } catch {
-    return false;
+    return "error";
   }
+}
+
+export async function dbHealthy(): Promise<boolean> {
+  return (await dbStatus()) === "connected";
 }
 
 /* ---------- تحويل الصفوف ---------- */

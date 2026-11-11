@@ -43,10 +43,12 @@ export interface TaskDto {
 
 export interface HealthDto {
   ok: boolean;
-  database: string;
+  database: string; // turso-connected | env-missing (المتغيرات غير مضبوطة على المنصة) | error
+  missingEnv?: string[]; // أسماء المتغيرات الناقصة فقط — بلا أي قيم
+  platform?: string; // vercel | unknown
   mcpEndpoint: string;
   models: { canonical: string; type: string; providers: string[] }[];
-  merger: { base: string | null; healthy: boolean };
+  merger: { base: string | null; configured?: boolean; healthy: boolean };
   authRequired: boolean;
 }
 

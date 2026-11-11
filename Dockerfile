@@ -13,6 +13,9 @@ COPY . .
 RUN npm run build:local
 
 ENV NODE_ENV=production
+# حرِج جدًا: Docker يضبط HOSTNAME بمعرّف الحاوية فيرتبط السيرفر المستقل به بدل 0.0.0.0
+# ولا يصل إليه بروكسي المنصة (502). نضبطه صراحةً على 0.0.0.0.
+ENV HOSTNAME=0.0.0.0
 # المنصة (Render) تضبط PORT — السيرفر المستقل يقرأ process.env.PORT
 
 CMD ["node", ".next/standalone/server.js"]

@@ -60,10 +60,12 @@ bun run dev   # http://localhost:3000
 | `TURSO_DATABASE_URL` | ✅ | `libsql://<db>-<org>.turso.io` |
 | `TURSO_AUTH_TOKEN` | ✅ | توكن Turso بصلاحيات كتابة |
 | `MERGER_API_BASE` | ✅ للدمج | رابط خدمة Video Merger API v2 |
+| `MERGER_TOKEN` | — | كلمة سر خدمة الدمج (إن ضُبطت على الخدمة يُرسل تلقائيًا كـ Bearer) |
 | `MCP_ACCESS_TOKEN` | — | إن ضُبط يُطلب `Authorization: Bearer <token>` على /mcp |
 | `KIE_IMAGE_MODEL` / `KIE_VIDEO_MODEL` / `COMETAPI_IMAGE_MODEL` / `COMETAPI_VIDEO_MODEL` | — | تجاوز أسماء الموديلات |
 
-> لاختبار الدمج محليًا دون خدمة حقيقية: `node scripts/mock-merger.mjs` يشغّل محاكيًا على المنفذ 8787 بنفس أشكال الـ API الحقيقية.
+> **خدمة الدمج الحقيقية مضمّنة في المستودع** — مجلد `merger-service/`: خدمة مستقلة بلا اعتماديات npm (Node خام + ffmpeg) تُنفِّذ المواصفة §7 كاملة (H.264+AAC حتى 1080p، حدود 10 مقاطع/200MB/150MB/600 ثانية، حذف تلقائي بعد 24 ساعة). انظر `merger-service/README.md` للنشر المجاني على Render/Railway/VPS.
+> ولباختبار سريع بلا ffmpeg: `node scripts/mock-merger.mjs` محاكي على المنفذ 8787.
 
 ### إنشاء قاعدة Turso مجانية
 
@@ -76,9 +78,10 @@ turso db tokens create <name>       # ← TURSO_AUTH_TOKEN
 ## النشر على Vercel
 
 1. اربط المستودع في Vercel → New Project.
-2. أضف متغيرات البيئة الثلاثة (أو أربعة مع `MCP_ACCESS_TOKEN`) في Settings → Environment Variables.
-3. Deploy — كل شيء يعمل عبر HTTP (libSQL) و streaming (/mcp) بلا أي ملف محلي.
-4. بعد النشر: افتح لوحة الإدارة ← أضف مفاتيحك ← انسخ رابط `<origin>/mcp` من بطاقة «ربط السيرفر» إلى عميلك.
+2. أضف متغيرات البيئة في Settings → Environment Variables: `TURSO_DATABASE_URL` و `TURSO_AUTH_TOKEN` إلزاميان، و `MERGER_API_BASE` (رابط خدمة الدمج من `merger-service/`) و `MERGER_TOKEN` إن فعّلت الحماية.
+3. **مهم — أوقف حماية النشر**: Settings → Deployment Protection → أعطّل «Vercel Authentication»، وإلا فلن يستطيع أي عميل MCP الوصول إلى `/mcp` وستظهر لوحة الإدارة متحطة بالوصول العام.
+4. Deploy — كل شيء يعمل عبر HTTP (libSQL) و streaming (/mcp) بلا أي ملف محلي.
+5. بعد النشر: افتح لوحة الإدارة ← أضف مفاتيحك ← انسخ رابط `<origin>/mcp` من بطاقة «ربط السيرفر» إلى عميلك.
 
 ## الربط من العملاء
 

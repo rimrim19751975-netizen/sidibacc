@@ -24,10 +24,23 @@ export function mergerBase(): string {
   return MERGER_BASE;
 }
 
+// توكن حماية اختياري لخدمة الدمج — يُرسل تلقائيًا إن ضُبط MERGER_TOKEN (الخدمة تفرضه إن ضبطت هي الأخرى)
+const MERGER_TOKEN = (process.env.MERGER_TOKEN || "").trim();
+
+function mergerHeaders(): Record<string, string> {
+  const h: Record<string, string> = {};
+  if (MERGER_TOKEN) h["Authorization"] = `Bearer ${MERGER_TOKEN}`;
+  return h;
+}
+
 async function mergerFetch(path: string, init: RequestInit, timeoutMs: number): Promise<Record<string, any> | null> {
   let res: Response;
   try {
-    res = await fetch(`${MERGER_BASE}${path}`, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    res = await fetch(`${MERGER_BASE}${path}`, {
+      ...init,
+      headers: { ...mergerHeaders(), ...(init.headers as Record<string, string> | undefined) },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
   } catch (err) {
     // timeout/fetch — أخطاء شبكتنا نحن: مؤقتة وليست حتمية
     throw new MergerError(`تعذر الوصول لخدمة الدمج: ${String((err as Error)?.message ?? err)}`, { final: false });

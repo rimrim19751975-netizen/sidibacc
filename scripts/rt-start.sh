@@ -1,12 +1,12 @@
 #!/bin/bash
-# إعادة تشغيل الخدمات محليًا بطريقة idempotent — المحاكي على 8787 والسيرفر على 3000
+# إعادة تشغيل الخدمات محليًا بطريقة idempotent — خدمة الدمج الحقيقية على 8787 والسيرفر على 3000
 cd /home/z/my-project
 set -a; . ./.env.local; set +a
 
 started_any=0
 if ! curl -s --max-time 2 http://localhost:8787/api/config > /dev/null; then
-  pkill -f mock-merger.mjs 2>/dev/null; sleep 0.5
-  nohup node scripts/mock-merger.mjs > /tmp/merger.log 2>&1 &
+  pkill -f "merger-service/server.mjs" 2>/dev/null; pkill -f mock-merger.mjs 2>/dev/null; sleep 0.5
+  PORT=8787 nohup node merger-service/server.mjs > /tmp/merger.log 2>&1 &
   started_any=1
 fi
 if ! curl -s --max-time 3 http://localhost:3000/api/health > /dev/null; then

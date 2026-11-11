@@ -65,3 +65,7 @@ server.log
 /db
 /Caddyfile
 /tsconfig.tsbuildinfo
+
+# بيانات خدمة الدمج المحلية (ملفات الفيديو المدموجة)
+/merger-service/data
+/data

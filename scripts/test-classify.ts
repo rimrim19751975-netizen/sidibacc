@@ -35,10 +35,22 @@ const cases: Array<{
     expected: "exhausted",
   },
   {
+    name: "صفحة WAF/Cloudflare HTML بحالة 403 → temporary لا disabled",
+    status: 403,
+    message: "<html><body>403 Forbidden — Attention Required! | cf-ray: 8a1b</body></html>",
+    expected: "temporary",
+  },
+  {
     name: "403 بلا رسالة رصيد صريحة → disabled",
     status: 403,
     message: "Forbidden",
     expected: "disabled",
+  },
+  {
+    name: "403裸 برسالة غير مفهومة (Access denied) → exhausted قابل للاستئناف لا disabled",
+    status: 403,
+    message: "Access denied",
+    expected: "exhausted",
   },
   {
     name: "نفس الرسالة بحالة 400",

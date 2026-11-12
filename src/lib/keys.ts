@@ -41,6 +41,9 @@ export function classifyProviderError(status: number | undefined, message: strin
   const strongBalance = hit(
     /insufficient|out of credits|balance (isn'?t|is not|no) enough|not enough (balance|credit)|please top up|top up to continue|余额不足|الرصيد غير كافٍ|نفد الرصيد|pre-?consume quota (failed|exceeded)|remaining quota|quota (failed|exceeded|insufficient)|need[:：]?\s*[＄$€]/,
   );
+  // صفحات WAF/Cloudflare (403 HTML: "Just a moment"، cf-ray...) ليست رفض مفتاح — مؤقتة دائمًا:
+  // التعطيل الدائم بسبب صفحة حماية قتل المفتاح الصالح فعليًا في حادثة 2026-11-12
+  if (hit(/cloudflare|just a moment|attention required|cf-ray|captcha|<html|<!doctype/)) return "temporary";
   // شكل الرصيد غير القابل للالتباس (pre-consume/remaining quota/need ＄X) يتقدم على كل شيء —
   // حتى لو حوتّت الرسالة كلمات مصادقة أو وصلت بحالة 401/403: هذه أخطاء رصيد يُصلحها
   // الشحن أو مفتاح آخر، والتعطيل الدائم هنا قتل المفتاح الوحيد فعليًا (حادثة 2026-11-12)
@@ -49,8 +52,11 @@ export function classifyProviderError(status: number | undefined, message: strin
   if (strongAuth) return "disabled";
   // نفاد رصيد صريح بالرسالة (صيَغ أقل تحديدًا)
   if (strongBalance) return "exhausted";
-  // مفتاح مرفوض بحالة HTTP بلا رسالة صريحة
-  if (s === 401 || s === 403) return "disabled";
+  // مفتاح مرفوض بحالة HTTP بلا رسالة صريحة:
+  if (s === 401) return "disabled";
+  // 403 غامضة بلا رسالة (CometAPI يلفّ الرصيد فيها وWAF يرسلها) → مستنزفة قابلة
+  // للاستئناف لا تعطيل دائم — كلفة الخطأ هنا مجرد محاولة إضافية آخر القائمة
+  if (s === 403) return "exhausted";
   // نفاد الرصيد الصريح 402
   if (s === 402) return "exhausted";
   // 429 و5xx بلا إشارة رصيد صريحة → مؤقتة دائمًا (تحديد المعدل لا يعني نفاد الرصيد)
@@ -153,6 +159,16 @@ export async function bumpKey(
   // الحقيقية بدل ضجيج الانتظار (فشل: 165 كان مضلّلًا للمستخدم)
   if (!opts.ok && opts.errorClass === "exhausted" && opts.error) {
     const cur = await findKey(id);
+    if (cur && cur.status === "exhausted") {
+      // المفتاح مستنزف أصلًا ووصلت رسالة رصيد (قد تختلف قيمة need بين المهام) →
+      // حدّث الرسالة والوقت فقط دون عدّ فشل جديد: الانتظار ليس حدثًا
+      const now = nowIso();
+      await getTurso().execute({
+        sql: "UPDATE api_keys SET last_error = ?, last_used_at = ?, last_checked_at = ? WHERE id = ?",
+        args: [opts.error, now, now, id],
+      });
+      return;
+    }
     if (cur && cur.last_error === opts.error) return;
   }
   // حارس الكتابة: رسالة رصيد صريحة لا تُعطّل مفتاحًا للأبد حتى لو وصلت classifications خاطئة —

@@ -41,12 +41,16 @@ export function classifyProviderError(status: number | undefined, message: strin
   const strongBalance = hit(
     /insufficient|out of credits|balance (isn'?t|is not|no) enough|not enough (balance|credit)|please top up|top up to continue|余额不足|الرصيد غير كافٍ|نفد الرصيد|pre-?consume quota (failed|exceeded)|remaining quota|quota (failed|exceeded|insufficient)|need[:：]?\s*[＄$€]/,
   );
-  // مفتاح مرفوض → تعطيل تلقائي ثم الانتقال للمفتاح التالي
-  if (s === 401 || s === 403 || strongAuth) return "disabled";
+  // مفتاح مرفوض صراحةً في الرسالة → تعطيل تلقائي ثم الانتقال للمفتاح التالي
+  if (strongAuth) return "disabled";
+  // نفاد رصيد صريح بالرسالة — يتقدم على كل أكواد الحالة بما فيها 401/403:
+  // CometAPI يلفّ خطأ الرصيد (pre-consume quota failed … need ＄X) داخل 403 —
+  // لو عدّلناه disabled توقفت إعادة المحاولة للأبد رغم أن الشحن يحلّ المشكلة (مُختبر فعليًا 2026-11-12)
+  if (strongBalance) return "exhausted";
+  // مفتاح مرفوض بحالة HTTP بلا رسالة صريحة
+  if (s === 401 || s === 403) return "disabled";
   // نفاد الرصيد الصريح 402
   if (s === 402) return "exhausted";
-  // نفاد رصيد صريح بالرسالة — يتقدم على 429/5xx لأنه ليس تحديد معدل
-  if (strongBalance) return "exhausted";
   // 429 و5xx بلا إشارة رصيد صريحة → مؤقتة دائمًا (تحديد المعدل لا يعني نفاد الرصيد)
   if (s === 429 || s >= 500) return "temporary";
   // نفاد الرصيد بالرسالة في أخطاء 4xx العادية — يُفحص قبل 400 لأن بعض المزودين يرسلونه بحالة 400

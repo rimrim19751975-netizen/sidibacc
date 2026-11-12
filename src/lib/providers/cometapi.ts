@@ -15,11 +15,12 @@ const CHECK_TIMEOUT = 20_000;
 const IMAGE_SYNC_POLL_MS = 3_000;
 const IMAGE_SYNC_MAX_MS = 150_000;
 // حارس الرصيد: CometAPI تحتسب مقدمًا (pre-consume) السعر الكامل للفيديو قبل بدئه —
-// طلب 15 ثانية لدى seedance-2-0-fast يتطلب ＄1.62 فلا يمرّ مع رصيد مجاني صغير.
-// نحدّ المدة افتراضيًا بـ 8 ثوانٍ (≈ ＄0.40 عند 480p) — قابل للتجاوز بمتغير البيئة.
+// المُختبر فعليًا: 15 ثانية → ＄1.62 و8 ثوانٍ → ＄0.84 (≈ ＄0.105/ثانية بغضّ النظر عن حجم الطلب).
+// سقف 5 ثوانٍ (≈ ＄0.52) يجعل الفيديو يمرّ مع الأرصدة المجانية الصغيرة —
+// ارفع السقف بمتغير البيئة COMETAPI_MAX_VIDEO_SECONDS عند توفر رصيد أكبر.
 const MAX_VIDEO_SECONDS = (() => {
   const v = Number(process.env.COMETAPI_MAX_VIDEO_SECONDS);
-  return Number.isFinite(v) && v >= 4 ? Math.min(15, Math.round(v)) : 8;
+  return Number.isFinite(v) && v >= 4 ? Math.min(15, Math.round(v)) : 5;
 })();
 // 480p دائمًا افتراضيًا (720p يضاعف السعر) — فعّل COMETAPI_ALLOW_720P=1 للسماح بـ 720p عند توفر رصيد كافٍ
 const ALLOW_720P = process.env.COMETAPI_ALLOW_720P === "1";

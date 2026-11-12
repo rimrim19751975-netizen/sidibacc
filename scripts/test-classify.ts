@@ -15,6 +15,19 @@ const cases: Array<{
     expected: "exhausted",
   },
   {
+    name: "pre-consume ملفوف داخل 403 (المُختبر فعليًا على /grok/v1/videos) — يجب exhausted لا disabled",
+    status: 403,
+    message:
+      "pre-consume quota failed, organization and owner combined remaining quota: ＄0.612376, need: ＄0.840000",
+    expected: "exhausted",
+  },
+  {
+    name: "403 بلا رسالة رصيد صريحة → disabled",
+    status: 403,
+    message: "Forbidden",
+    expected: "disabled",
+  },
+  {
     name: "نفس الرسالة بحالة 400",
     status: 400,
     message:

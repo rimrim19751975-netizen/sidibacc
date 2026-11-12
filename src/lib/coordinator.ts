@@ -32,6 +32,13 @@ function effectiveWait(seconds: number): number {
 }
 
 const RETRY_COOLDOWN_MS = 45_000; // تهدئة إعادة محاولة الإنشاء عند نفاد المفاتيح
+// كل المفاتيح مستنزفة (لا نشط) → لا شيء يتغير إلا شحن/إضافة مفتاح — نهدئ 3 دقائق
+// بدل 45 ثانية: لا إغراق للمزود، ولا تضخّم عدّادات «فشل» في اللوحة بلا فائدة
+// (تنشيط/إضافة مفتاح تستأنف فورًا بـ bypassCooldown)
+const ALL_EXHAUSTED_COOLDOWN_MS = 180_000;
+function cooldownMsForPool(pool: KeyRow[]): number {
+  return pool.some((k) => k.status === "active") ? RETRY_COOLDOWN_MS : ALL_EXHAUSTED_COOLDOWN_MS;
+}
 const POLL_INTERVAL_MS = 3_000; // كل 3 ثوانٍ أثناء نافذة الانتظار
 
 // أقفال داخل النسخة الواحدة
@@ -369,14 +376,18 @@ export async function pumpQueue(limit = 1, opts: DriveOptions = {}): Promise<num
       await refreshTask(row.id, opts).catch(() => {});
       pumped++;
     }
-    // ثانيًا: التي لم تصل لمزود بعد (تهدئة ~45 ثانية بين المحاولات)
+    // ثانيًا: التي لم تصل لمزود بعد — التهدئة نفسها المعتمدة في refreshTask
+    // (45 ثانية مع مفتاح نشط، 3 دقائق إذا كل المفاتيح مستنزفة)
     const stuck = await listStuckTasks(Math.max(limit * 4, 8));
     for (const row of stuck) {
       if (pumped >= limit) break;
       if (taskLocks.has(row.id)) continue;
+      const def = resolveModel(row.model) ?? defaultModelOfType(row.type === "video" ? "video" : "image");
+      const pool = await getKeyPool(def.providers).catch(() => [] as KeyRow[]);
+      const cooldown = pool.length ? cooldownMsForPool(pool) : RETRY_COOLDOWN_MS;
       // احترام تهدئة إعادة المحاولة نفسها (إلا عند إضافة/تنشيط مفتاح — استئناف فوري)
       const last = Date.parse(row.updated_at || "") || 0;
-      if (!opts.bypassCooldown && attemptsOf(row).length && Date.now() - last < RETRY_COOLDOWN_MS) continue;
+      if (!opts.bypassCooldown && attemptsOf(row).length && Date.now() - last < cooldown) continue;
       await refreshTask(row.id, opts).catch(() => {});
       pumped++;
     }
@@ -533,10 +544,10 @@ async function refreshGenerationTask(
     return await driveGeneration(fresh, def, pool, 10, undefined, 0);
   }
 
-  // بلا provider_task_id: إما تهدئة (~45 ثانية) أو إعادة محاولة الإنشاء على كل المفاتيح
+  // بلا provider_task_id: إما تهدئة (~45 ثانية، أو 3 دقائق إذا كل المفاتيح مستنزفة) أو إعادة محاولة الإنشاء على كل المفاتيح
   const attempts = attemptsOf(row);
   const last = Date.parse(row.updated_at || "") || 0;
-  if (!opts.bypassCooldown && attempts.length && Date.now() - last < RETRY_COOLDOWN_MS) {
+  if (!opts.bypassCooldown && attempts.length && Date.now() - last < cooldownMsForPool(pool)) {
     return row; // تهدئة حتى لا نضغط المزودين
   }
   return await driveGeneration(row, def, pool, 10, undefined, 0, opts);

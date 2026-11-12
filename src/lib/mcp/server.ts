@@ -2,11 +2,13 @@
 // الأوصاف إنجليزية دقيقة (يقرأها العميل)، ونتائج الاستدعاء عربية.
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { MODELS, IMAGE_CANONICAL, SEEDANCE_FAST_CANONICAL, type ModelDef } from "../models";
+import { after } from "next/server";
+import { MODELS, IMAGE_CANONICAL, VIDEO_CANONICAL, SEEDANCE_FAST_CANONICAL, SEEDANCE_MINI_CANONICAL, type ModelDef } from "../models";
 import {
   startGeneration,
   startMerge,
   refreshTask,
+  pumpQueue,
   listMedia,
   NoKeysError,
   ParamsRejection,
@@ -22,10 +24,11 @@ function modelEnumOf(type: ModelDef["type"]): [string, ...string[]] {
 }
 
 // نص التوجيهات الجاهز المُرسل مع initialize — يحمل قواعد المتابعة والتبديل الصامت
-export const SERVER_INSTRUCTIONS = `AI media generation server (kie.ai + CometAPI with automatic sequential multi-key failover, plus video merging).
+export const SERVER_INSTRUCTIONS = `AI media generation server (free images + kie.ai/CometAPI video with automatic sequential multi-key failover, plus video merging).
+Images are generated FREE by default (no API key, no credits needed); if the free service is unavailable the server automatically falls back to the configured paid keys.
 Workflow: call generate_image or generate_video. If the response contains finished URLs, show them to the user.
 If it returns a task_id with status PROCESSING, call get_task with that task_id every ~10 seconds until status is completed (show the URL) or failed (explain why).
-IMPORTANT: the server automatically switches API keys in strict order on any failure (exhausted balance, invalid key, rate limits) and continues the SAME task under the same task_id — you will never encounter key/balance errors. Never stop or warn the user about keys or balances; just keep polling get_task until the result appears.
+IMPORTANT: the server automatically switches API keys in strict order on any failure (exhausted balance, invalid key, rate limits) and continues the SAME task under the same task_id — you will never encounter key/balance errors. Pending tasks also resume automatically in the background whenever any server activity occurs (polling, dashboard, new keys) — just keep polling get_task until the result appears.
 To concatenate several finished clips into one video, call merge_videos with 'urls' (direct links) or 'task_ids' (completed video tasks, in merge order); track it with get_task the same way. Note: the merged file is stored on the merging service for ~24 hours only — tell the user to watch/download it promptly.
 Use list_media to recall previously generated media from the database.`;
 
@@ -76,7 +79,7 @@ export function buildMcpServer(): McpServer {
     {
       title: "Generate image",
       description:
-        "Generate an image with gpt-image-2-6/flare-text-to-image (automatic silent failover across all active API keys in strict addition order). Returns the ready image URL if it completes within the wait window; otherwise returns a task_id — call get_task every ~10 seconds until completed, then show the URL and stop.",
+        "Generate an image — FREE by default (Flux, no API key and no credits needed). Set model to 'gpt-image-2-6/flare-text-to-image' only if you specifically need the paid GPT-image quality. Automatic silent failover across all active API keys and the free provider. Returns the ready image URL if it completes within the wait window; otherwise returns a task_id — call get_task every ~10 seconds until completed, then show the URL and stop.",
       inputSchema: {
         prompt: z.string().min(1).describe("What to draw. Detailed prompts give better results."),
         model: z.enum(modelEnumOf("image")).default(IMAGE_CANONICAL),
@@ -111,7 +114,7 @@ export function buildMcpServer(): McpServer {
     {
       title: "Generate video",
       description:
-        "Generate a video. Default model doubao-seedance-2-0-fast (fastest, usually under ~2 minutes; select 'grok-imagine-video-1-5-preview' for native synchronized dialogue audio). Optional image-to-video via image_url. A short wait with live progress streaming returns a task_id — track it with get_task every ~10 seconds until completed, then show the URL and stop.",
+        `Generate a video. Default model ${SEEDANCE_FAST_CANONICAL} (fastest, usually under ~2 minutes; select '${SEEDANCE_MINI_CANONICAL}' for the cheapest option, or '${VIDEO_CANONICAL}' for native synchronized dialogue audio). Videos are limited to short durations to protect the prepaid balance. Optional image-to-video via image_url. A short wait with live progress streaming returns a task_id — track it with get_task every ~10 seconds until completed, then show the URL and stop.`,
       inputSchema: {
         prompt: z
           .string()
@@ -200,6 +203,13 @@ export function buildMcpServer(): McpServer {
     async (args) => {
       try {
         const row = await refreshTask(args.task_id);
+        // مضخة الطابور: كل نداء get_task يستأنف مهمة عالقة أخرى في الخلفية
+        // (بعد إرسال الرد — لا يضيف أي تأخير على هذا النداء)
+        try {
+          after(async () => {
+            await pumpQueue(1).catch(() => {});
+          });
+        } catch {}
         if (!row) return textResult(`❌ لم يتم العثور على مهمة بالمعرّف: ${args.task_id}`, true);
         return textResult(formatTaskForModel(row), row.status === "failed");
       } catch (err) {

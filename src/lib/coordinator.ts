@@ -11,11 +11,13 @@ import {
   getTask,
   updateTask,
   listRecentTasks,
+  listStuckTasks,
   resultUrlsOf,
   attemptsOf,
   nowIso,
   type TaskRow,
 } from "./turso";
+import { pollinationsImage } from "./providers/pollinations";
 import { getKeyPool, findKey, bumpKey, classifyProviderError, isKeyOrBalanceError, type KeyRow } from "./keys";
 import { resolveModel, MODELS, defaultModelOfType, type ModelDef, type ProviderId } from "./models";
 import { getAdapter, ProviderError, type AttemptEntry, type KeyRef } from "./providers";
@@ -153,10 +155,9 @@ export async function startGeneration(opts: StartGenerationOptions): Promise<Tas
     );
   }
   const pool = await getKeyPool(def.providers);
-  if (!pool.length) {
-    throw new NoKeysError(def.canonical);
-  }
-  // سجّل المهمة في Turso قبل أي نداء خارجي — تبقى قابلة للتتبع حتى لو انقطع الاتصال
+  // سجّل المهمة في Turso قبل أي نداء خارجي — تبقى قابلة للتتبع حتى لو انقطع الاتصال.
+  // حتى بلا مفاتيح تُسجَّل المهمة: الصور تكتمل فورًا بالمزود المجاني، والفيديو يبقى
+  // «قيد المعالجة» ويُستأنف تلقائيًا (مضخة الطابور) بمجرد إضافة/شحن أي مفتاح.
   const task = await insertTask({
     id: randomUUID(),
     model: def.canonical,
@@ -172,7 +173,14 @@ type Outcome =
   | { kind: "failed"; error: string }
   | { kind: "expired" };
 
+interface DriveOptions {
+  bypassCooldown?: boolean;
+}
+
 // حلقة التبديل التسلسلي: جرّب المرشحين بالترتيب حتى نجاح الإنشاء
+// الصور: المزود المجاني Pollinations (بلا مفتاح وبلا رصيد) يُجرَّب أولًا افتراضيًا
+// (IMAGE_FREE_FIRST=0 يعكس الترتيب: مفاتيح مدفوعة أولًا ثم المجاني احتياطًا) —
+// هذا يُبقي رصيد المفاتيح المدفوعة كله للفيديو المكلف.
 async function driveGeneration(
   task: TaskRow,
   def: ModelDef,
@@ -180,7 +188,34 @@ async function driveGeneration(
   waitSeconds: number,
   notify?: StartGenerationOptions["notify"],
   startIndex = 0,
+  opts: DriveOptions = {},
 ): Promise<TaskRow> {
+  const freeFirst = def.type === "image" && process.env.IMAGE_FREE_FIRST !== "0";
+  let freeTried = false;
+  if (freeFirst) {
+    freeTried = true;
+    try {
+      notify?.("جارٍ التوليد عبر المزود المجاني…", 30, 100);
+      const free = await pollinationsImage(parseParams(task));
+      await updateTask(task.id, {
+        append_attempts: [{ provider: "pollinations", keyId: "", keyLabel: "", ok: true, at: nowIso() }],
+        provider: "pollinations",
+        key_id: null,
+      });
+      return (await updateTask(task.id, {
+        status: "completed",
+        result_urls: free.urls,
+        progress: 100,
+        expectStatus: "processing",
+      }))!;
+    } catch (err) {
+      const { message } = normalizeError(err);
+      await updateTask(task.id, {
+        append_attempts: [{ provider: "pollinations", keyId: "", keyLabel: "", ok: false, errorClass: "temporary", error: message, at: nowIso() }],
+      });
+      // فشل المجاني — ننتقل للمفاتيح المدفوعة كالمعتاد
+    }
+  }
   for (let i = startIndex; i < pool.length; i++) {
     const key = pool[i];
     const adapter = getAdapter(key.provider);
@@ -270,6 +305,32 @@ async function driveGeneration(
       continue;
     }
   }
+  // نفدت كل المفاتيح (أو لم يوجد أي مفتاح) — قبل الاستسلام نجرّب المزود المجاني
+  // للصور إن لم يُجرَّب في البداية (وضع المدفوع-أولًا)
+  if (def.type === "image" && !freeTried) {
+    freeTried = true;
+    try {
+      notify?.("جارٍ التوليد عبر المزود المجاني…", 50, 100);
+      const free = await pollinationsImage(parseParams(task));
+      await updateTask(task.id, {
+        append_attempts: [{ provider: "pollinations", keyId: "", keyLabel: "", ok: true, at: nowIso() }],
+        provider: "pollinations",
+        key_id: null,
+      });
+      return (await updateTask(task.id, {
+        status: "completed",
+        result_urls: free.urls,
+        progress: 100,
+        expectStatus: "processing",
+      }))!;
+    } catch (err) {
+      const { message } = normalizeError(err);
+      await updateTask(task.id, {
+        append_attempts: [{ provider: "pollinations", keyId: "", keyLabel: "", ok: false, errorClass: "temporary", error: message, at: nowIso() }],
+      });
+      // فشل المزود المجاني أيضًا — تبقى processing وتُعاد المحاولة لاحقًا
+    }
+  }
   // فشل الإنشاء على كل المفاتيح: تبقى processing (ليست failed) برسالة داخلية
   // «بانتظار توفر مفتاح صالح…» — تُعاد المحاولة تلقائيًا مع كل get_task بعد التهدئة،
   // وإن شُحن رصيد أي مفتاح تكتمل المهمة من تلقاء نفسها.
@@ -278,6 +339,34 @@ async function driveGeneration(
     progress: 0,
     error_message: "بانتظار توفر مفتاح صالح…",
   }))!;
+}
+
+/* ---------- مضخة الطابور: استئناف المهام العالقة تلقائيًا ---------- */
+
+// المهام العالقة كانت تُعاد فقط عند استدعاء get_task لنفس المهمة — إذا توقف العميل
+// عن الاستعلام بقيت معلقة للأبد (12 مهمة عالقة فعليًا). مضخة الطابور تستأنف أقدم
+// المهام العالقة عند أي حركة على التطبيق: كل get_task، كل تحديث للوحة، كل إضافة/
+// تنشيط مفتاح، وكل نبضة health — بلا أي تدخل من العميل.
+let pumpInFlight = false;
+export async function pumpQueue(limit = 1, opts: DriveOptions = {}): Promise<number> {
+  if (pumpInFlight) return 0;
+  pumpInFlight = true;
+  try {
+    const stuck = await listStuckTasks(Math.max(limit * 4, 8));
+    let pumped = 0;
+    for (const row of stuck) {
+      if (pumped >= limit) break;
+      if (taskLocks.has(row.id)) continue;
+      // احترام تهدئة إعادة المحاولة نفسها (إلا عند إضافة/تنشيط مفتاح — استئناف فوري)
+      const last = Date.parse(row.updated_at || "") || 0;
+      if (!opts.bypassCooldown && attemptsOf(row).length && Date.now() - last < RETRY_COOLDOWN_MS) continue;
+      await refreshTask(row.id, opts).catch(() => {});
+      pumped++;
+    }
+    return pumped;
+  } finally {
+    pumpInFlight = false;
+  }
 }
 
 type ProviderOutcome =
@@ -325,7 +414,10 @@ async function pollProviderWindow(
 /* ---------- تحديث حي عند get_task ---------- */
 
 // قفل يمنع تزامن refresh متعددة على نفس المهمة داخل النسخة
-export async function refreshTask(taskId: string): Promise<TaskRow | null> {
+export async function refreshTask(
+  taskId: string,
+  opts: { bypassCooldown?: boolean } = {},
+): Promise<TaskRow | null> {
   const row = await getTask(taskId);
   if (!row) return null;
   if (row.status === "completed" || row.status === "failed") return row;
@@ -335,7 +427,7 @@ export async function refreshTask(taskId: string): Promise<TaskRow | null> {
   const p = (async () => {
     try {
       if (row.type === "merge") return await refreshMergeTask(row);
-      return await refreshGenerationTask(row);
+      return await refreshGenerationTask(row, opts);
     } finally {
       taskLocks.delete(taskId);
     }
@@ -344,7 +436,10 @@ export async function refreshTask(taskId: string): Promise<TaskRow | null> {
   return p;
 }
 
-async function refreshGenerationTask(row: TaskRow): Promise<TaskRow> {
+async function refreshGenerationTask(
+  row: TaskRow,
+  opts: { bypassCooldown?: boolean } = {},
+): Promise<TaskRow> {
   const def = resolveModel(row.model) ?? defaultModelOfType(row.type === "video" ? "video" : "image");
   const pool = await getKeyPool(def.providers);
 
@@ -424,10 +519,10 @@ async function refreshGenerationTask(row: TaskRow): Promise<TaskRow> {
   // بلا provider_task_id: إما تهدئة (~45 ثانية) أو إعادة محاولة الإنشاء على كل المفاتيح
   const attempts = attemptsOf(row);
   const last = Date.parse(row.updated_at || "") || 0;
-  if (attempts.length && Date.now() - last < RETRY_COOLDOWN_MS) {
+  if (!opts.bypassCooldown && attempts.length && Date.now() - last < RETRY_COOLDOWN_MS) {
     return row; // تهدئة حتى لا نضغط المزودين
   }
-  return await driveGeneration(row, def, pool, 10, undefined, 0);
+  return await driveGeneration(row, def, pool, 10, undefined, 0, opts);
 }
 
 function nextIndexAfter(pool: KeyRow[], keyId: string): number {

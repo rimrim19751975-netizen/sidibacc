@@ -20,10 +20,13 @@ const COMETAPI_IMAGE_MODEL = process.env.COMETAPI_IMAGE_MODEL || "gpt-image-2.5-
 const COMETAPI_VIDEO_MODEL = process.env.COMETAPI_VIDEO_MODEL || "grok-imagine-video";
 // الفيديو السريع: عائلة Seedance عبر POST /v1/videos — الأسرع لدى CometAPI
 const COMETAPI_SEEDANCE_MODEL = process.env.COMETAPI_SEEDANCE_MODEL || "doubao-seedance-2-0-fast";
+// الفيديو الاقتصادي: doubao-seedance-2-0-mini — الأرخص في العائلة (480p ≈ $0.032/ث → فيديو 5 ثوانٍ ≈ $0.16)
+const COMETAPI_SEEDANCE_MINI_MODEL = process.env.COMETAPI_SEEDANCE_MINI_MODEL || "doubao-seedance-2-0-mini";
 
 export const IMAGE_CANONICAL = "gpt-image-2-6/flare-text-to-image";
 export const VIDEO_CANONICAL = "grok-imagine-video-1-5-preview";
 export const SEEDANCE_FAST_CANONICAL = "doubao-seedance-2-0-fast";
+export const SEEDANCE_MINI_CANONICAL = "doubao-seedance-2-0-mini";
 
 export const MODELS: ModelDef[] = [
   {
@@ -34,6 +37,14 @@ export const MODELS: ModelDef[] = [
     type: "video",
     providers: ["cometapi"],
     providerModel: { kie: "", cometapi: COMETAPI_SEEDANCE_MODEL },
+  },
+  {
+    // الفيديو الاقتصادي: Seedance 2.0 Mini — نفس العائلة ونفس نقطة النهاية /v1/videos، بسعر أقل
+    canonical: SEEDANCE_MINI_CANONICAL,
+    aliases: [SEEDANCE_MINI_CANONICAL, "seedance-2-0-mini", "seedance-mini"],
+    type: "video",
+    providers: ["cometapi"],
+    providerModel: { kie: "", cometapi: COMETAPI_SEEDANCE_MINI_MODEL },
   },
   {
     canonical: IMAGE_CANONICAL,

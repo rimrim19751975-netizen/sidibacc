@@ -241,6 +241,19 @@ export async function listRecentTasks(limit: number, filter?: { type?: string; s
   return rs.rows.map((r) => mapTaskRow(r as Record<string, unknown>));
 }
 
+// المهام العالقة التي لم تصل لمزود أصلًا (بلا provider_task_id) — أقدمها أولًا
+// هذا هو وقود مضخة الطابور pumpQueue: تُستأنف تلقائيًا عند أي حركة على التطبيق
+export async function listStuckTasks(limit: number): Promise<TaskRow[]> {
+  await ensureSchema();
+  const rs = await getTurso().execute({
+    sql: `SELECT * FROM tasks
+          WHERE status = 'processing' AND provider_task_id IS NULL AND type IN ('image', 'video')
+          ORDER BY created_at ASC, id ASC LIMIT ?`,
+    args: [Math.max(1, Math.min(50, limit))],
+  });
+  return rs.rows.map((r) => mapTaskRow(r as Record<string, unknown>));
+}
+
 export interface TaskStats {
   total: number;
   completed: number;

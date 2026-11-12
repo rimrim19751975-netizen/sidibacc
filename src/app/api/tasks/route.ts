@@ -1,7 +1,9 @@
 // لوحة المهام للواجهة: إحصائيات + أحدث المهام (تُستطع كل ~5 ثوانٍ من العميل)
 // ملاحظة: لا يُعاد params_json هنا — تفاصيل داخلية تبقى في القاعدة.
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { listRecentTasks, taskStats, attemptsOf } from "@/lib/turso";
+import { pumpQueue } from "@/lib/coordinator";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +13,13 @@ export async function GET(request: Request): Promise<Response> {
   const limit = Math.max(1, Math.min(50, Number(url.searchParams.get("limit") ?? 20) || 20));
 
   const [stats, rows] = await Promise.all([taskStats(), listRecentTasks(limit)]);
+  // مضخة الطابور: كل تحديث للوحة (كل ~5 ثوانٍ ما دامت مفتوحة) يستأنف مهمة عالقة
+  // واحدة في الخلفية — المهام تكتمل وحدها ما دامت اللوحة مفتوحة حتى لو توقف عميل MCP.
+  try {
+    after(async () => {
+      await pumpQueue(1).catch(() => {});
+    });
+  } catch {}
   return NextResponse.json({
     stats,
     tasks: rows.map((t) => {

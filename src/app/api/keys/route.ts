@@ -1,7 +1,9 @@
 // إدارة المفاتيح — القائمة والعرض مُقنَّعان دائمًا (لا مفتاح كامل في أي استجابة)
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { addKey, listKeys, maskKey } from "@/lib/keys";
 import { ensureSchema } from "@/lib/turso";
+import { pumpQueue } from "@/lib/coordinator";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +48,12 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: e.msg }, { status: e.status });
   }
   const k = res.key;
+  // إضافة مفتاح = توفر طاقة توليد جديدة — استئناف فوري لأقدم المهام العالقة (تجاوز التهدئة)
+  try {
+    after(async () => {
+      await pumpQueue(3, { bypassCooldown: true }).catch(() => {});
+    });
+  } catch {}
   return NextResponse.json(
     {
       key: {

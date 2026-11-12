@@ -39,7 +39,7 @@ export function classifyProviderError(status: number | undefined, message: strin
     /invalid api key|incorrect api key|api key.{0,24}(invalid|incorrect|unauthorized|expired)|unauthorized|authentication|forbidden|signature invalid|المفتاح غير صالح/,
   );
   const strongBalance = hit(
-    /insufficient|out of credits|balance (isn'?t|is not|no) enough|not enough (balance|credit)|please top up|top up to continue|余额不足|الرصيد غير كافٍ|نفد الرصيد/,
+    /insufficient|out of credits|balance (isn'?t|is not|no) enough|not enough (balance|credit)|please top up|top up to continue|余额不足|الرصيد غير كافٍ|نفد الرصيد|pre-?consume quota (failed|exceeded)|remaining quota|quota (failed|exceeded|insufficient)|need[:：]?\s*[＄$€]/,
   );
   // مفتاح مرفوض → تعطيل تلقائي ثم الانتقال للمفتاح التالي
   if (s === 401 || s === 403 || strongAuth) return "disabled";

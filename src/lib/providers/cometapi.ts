@@ -14,6 +14,15 @@ const CREATE_TIMEOUT = 30_000;
 const CHECK_TIMEOUT = 20_000;
 const IMAGE_SYNC_POLL_MS = 3_000;
 const IMAGE_SYNC_MAX_MS = 150_000;
+// حارس الرصيد: CometAPI تحتسب مقدمًا (pre-consume) السعر الكامل للفيديو قبل بدئه —
+// طلب 15 ثانية لدى seedance-2-0-fast يتطلب ＄1.62 فلا يمرّ مع رصيد مجاني صغير.
+// نحدّ المدة افتراضيًا بـ 8 ثوانٍ (≈ ＄0.40 عند 480p) — قابل للتجاوز بمتغير البيئة.
+const MAX_VIDEO_SECONDS = (() => {
+  const v = Number(process.env.COMETAPI_MAX_VIDEO_SECONDS);
+  return Number.isFinite(v) && v >= 4 ? Math.min(15, Math.round(v)) : 8;
+})();
+// 480p دائمًا افتراضيًا (720p يضاعف السعر) — فعّل COMETAPI_ALLOW_720P=1 للسماح بـ 720p عند توفر رصيد كافٍ
+const ALLOW_720P = process.env.COMETAPI_ALLOW_720P === "1";
 
 function authHeaders(key: KeyRef): Record<string, string> {
   return { Authorization: `Bearer ${key.api_key}`, "Content-Type": "application/json" };
@@ -92,8 +101,8 @@ async function seedanceCreate(key: KeyRef, model: string, input: Record<string, 
   fd.append("model", model);
   fd.append("prompt", String(input.prompt ?? ""));
   const duration = typeof input.duration === "number" && input.duration >= 2 ? Math.round(input.duration) : 5;
-  fd.append("seconds", String(Math.min(15, Math.max(4, duration)))); // 2.0 family: 4-15
-  fd.append("size", seedanceSize(input.aspect_ratio, input.resolution));
+  fd.append("seconds", String(Math.min(MAX_VIDEO_SECONDS, Math.max(4, duration)))); // حارس الرصيد: سقف المدة
+  fd.append("size", seedanceSize(input.aspect_ratio, ALLOW_720P ? input.resolution : "480p"));
   if (typeof input.image_url === "string" && input.image_url) {
     fd.append("input_reference", input.image_url); // image-to-video عبر رابط عام مباشر
   }

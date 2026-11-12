@@ -12,6 +12,7 @@ import {
   updateTask,
   listRecentTasks,
   listStuckTasks,
+  listRunningTasks,
   resultUrlsOf,
   attemptsOf,
   nowIso,
@@ -348,12 +349,28 @@ async function driveGeneration(
 // المهام العالقة عند أي حركة على التطبيق: كل get_task، كل تحديث للوحة، كل إضافة/
 // تنشيط مفتاح، وكل نبضة health — بلا أي تدخل من العميل.
 let pumpInFlight = false;
+// فجوة مُختبرة فعليًا: المهام التي أرسلتها المضخة نفسها (لديها provider_task_id) كان
+// يستأنفها فقط استعلام العميل عنها بـ get_task — إذا توقف عنها بقيت progress ثابتة للأبد.
+// المضخة الآن تستأنف أولًا الجاريَ بين المزودين (أقدم تحديثًا، تجاوز 60 ثانية بلا تحديث)
+// بفحص واحد يحفظ التقدم/يُكملها/يُدير فشل المفتاح، ثم المهام التي لم تُرسَل بعد.
+const RUNNING_STALE_MS = 60_000;
 export async function pumpQueue(limit = 1, opts: DriveOptions = {}): Promise<number> {
   if (pumpInFlight) return 0;
   pumpInFlight = true;
   try {
-    const stuck = await listStuckTasks(Math.max(limit * 4, 8));
     let pumped = 0;
+    // أولًا: الجارية لدى المزود — أقرب للاكتمال، فحص رخيص واحد لكل منها
+    const running = await listRunningTasks(Math.max(limit * 3, 8));
+    for (const row of running) {
+      if (pumped >= limit) break;
+      if (taskLocks.has(row.id)) continue;
+      const last = Date.parse(row.updated_at || "") || 0;
+      if (Date.now() - last < RUNNING_STALE_MS) continue;
+      await refreshTask(row.id, opts).catch(() => {});
+      pumped++;
+    }
+    // ثانيًا: التي لم تصل لمزود بعد (تهدئة ~45 ثانية بين المحاولات)
+    const stuck = await listStuckTasks(Math.max(limit * 4, 8));
     for (const row of stuck) {
       if (pumped >= limit) break;
       if (taskLocks.has(row.id)) continue;

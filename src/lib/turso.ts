@@ -254,6 +254,20 @@ export async function listStuckTasks(limit: number): Promise<TaskRow[]> {
   return rs.rows.map((r) => mapTaskRow(r as Record<string, unknown>));
 }
 
+// المهام الجارية لدى المزود (لها provider_task_id) بالأقدم تحديثًا أولًا — تُستأنف
+// بواسطة المضخة حتى لو توقف العميل عن الاستعلام (فحص واحد يحفظ التقدم أو يُكملها).
+// الفحص الزمني (staleness) يُطبَّق في JS لأن صيغ التاريخ مخلوطة ISO وSQLite.
+export async function listRunningTasks(limit: number): Promise<TaskRow[]> {
+  await ensureSchema();
+  const rs = await getTurso().execute({
+    sql: `SELECT * FROM tasks
+          WHERE status = 'processing' AND provider_task_id IS NOT NULL
+          ORDER BY updated_at ASC, id ASC LIMIT ?`,
+    args: [Math.max(1, Math.min(50, limit))],
+  });
+  return rs.rows.map((r) => mapTaskRow(r as Record<string, unknown>));
+}
+
 export interface TaskStats {
   total: number;
   completed: number;

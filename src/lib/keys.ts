@@ -148,6 +148,13 @@ export async function bumpKey(
   opts: { ok: boolean; errorClass?: ErrorClass; error?: string },
 ): Promise<void> {
   await ensureSchema();
+  // نفس خطأ الرصيد المتكرر حرفيًا (المضخة تعيد المحاولة أثناء انتظار الشحن) لا يعبّئ
+  // العدّادات ولا يحدّث آخر استخدام — الحالة لم تتغير، والعدّادات تبقى تعكس الأحداث
+  // الحقيقية بدل ضجيج الانتظار (فشل: 165 كان مضلّلًا للمستخدم)
+  if (!opts.ok && opts.errorClass === "exhausted" && opts.error) {
+    const cur = await findKey(id);
+    if (cur && cur.last_error === opts.error) return;
+  }
   // حارس الكتابة: رسالة رصيد صريحة لا تُعطّل مفتاحًا للأبد حتى لو وصلت classifications خاطئة —
   // النفاد (exhausted) قابل للاستئناف بالشحن أو بمفتاح آخر، أما disabled فيُستبعد من الدوران كليًا
   const effectiveClass: ErrorClass | undefined =

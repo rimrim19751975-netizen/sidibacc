@@ -41,11 +41,13 @@ export function classifyProviderError(status: number | undefined, message: strin
   const strongBalance = hit(
     /insufficient|out of credits|balance (isn'?t|is not|no) enough|not enough (balance|credit)|please top up|top up to continue|余额不足|الرصيد غير كافٍ|نفد الرصيد|pre-?consume quota (failed|exceeded)|remaining quota|quota (failed|exceeded|insufficient)|need[:：]?\s*[＄$€]/,
   );
+  // شكل الرصيد غير القابل للالتباس (pre-consume/remaining quota/need ＄X) يتقدم على كل شيء —
+  // حتى لو حوتّت الرسالة كلمات مصادقة أو وصلت بحالة 401/403: هذه أخطاء رصيد يُصلحها
+  // الشحن أو مفتاح آخر، والتعطيل الدائم هنا قتل المفتاح الوحيد فعليًا (حادثة 2026-11-12)
+  if (hit(/pre-?consume quota (failed|exceeded)|remaining quota|need[:：]?\s*[＄$€]/)) return "exhausted";
   // مفتاح مرفوض صراحةً في الرسالة → تعطيل تلقائي ثم الانتقال للمفتاح التالي
   if (strongAuth) return "disabled";
-  // نفاد رصيد صريح بالرسالة — يتقدم على كل أكواد الحالة بما فيها 401/403:
-  // CometAPI يلفّ خطأ الرصيد (pre-consume quota failed … need ＄X) داخل 403 —
-  // لو عدّلناه disabled توقفت إعادة المحاولة للأبد رغم أن الشحن يحلّ المشكلة (مُختبر فعليًا 2026-11-12)
+  // نفاد رصيد صريح بالرسالة (صيَغ أقل تحديدًا)
   if (strongBalance) return "exhausted";
   // مفتاح مرفوض بحالة HTTP بلا رسالة صريحة
   if (s === 401 || s === 403) return "disabled";
@@ -87,15 +89,17 @@ function mapKeyRow(r: Record<string, unknown>): KeyRow {
   };
 }
 
-// الجلب التسلسلي الصارم: أول مفتاح أُضيف يُجرَّب أولًا (created_at ASC, id ASC) —
-// هذا ليس round-robin وليس «الأقل استخدامًا أولًا». المستنزف (exhausted) يبقى في القائمة،
-// والاستثناء الوحيد هو التعطيل اليدوي (disabled) من الواجهة.
+// الجلب التسلسلي: المفاتيح النشطة أولًا (بترتيب الإضافة created_at ASC, id ASC) ثم
+// المستنزفة (exhausted) آخرًا — انتقال فوري للمفتاح التالي الصالح دون حرق محاولة فاشلة
+// على مفتاح بلا رصيد في كل مهمة. المستنزف يبقى في القائمة (يُجرَّب فقط بعد فشل كل النشطة
+// — لو شُحن رصيده يعود للعمل)، والاستثناء الوحيد من القائمة هو التعطيل اليدوي (disabled).
 export async function getKeyPool(providers: ProviderId[]): Promise<KeyRow[]> {
   await ensureSchema();
   if (!providers.length) return [];
   const ph = providers.map(() => "?").join(", ");
   const rs = await getTurso().execute({
-    sql: `SELECT * FROM api_keys WHERE status != 'disabled' AND provider IN (${ph}) ORDER BY created_at ASC, id ASC`,
+    sql: `SELECT * FROM api_keys WHERE status != 'disabled' AND provider IN (${ph})
+          ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, created_at ASC, id ASC`,
     args: [...providers],
   });
   return rs.rows.map((r) => mapKeyRow(r as Record<string, unknown>));
@@ -144,6 +148,14 @@ export async function bumpKey(
   opts: { ok: boolean; errorClass?: ErrorClass; error?: string },
 ): Promise<void> {
   await ensureSchema();
+  // حارس الكتابة: رسالة رصيد صريحة لا تُعطّل مفتاحًا للأبد حتى لو وصلت classifications خاطئة —
+  // النفاد (exhausted) قابل للاستئناف بالشحن أو بمفتاح آخر، أما disabled فيُستبعد من الدوران كليًا
+  const effectiveClass: ErrorClass | undefined =
+    opts.errorClass === "disabled" &&
+    opts.error &&
+    /pre-?consume quota|remaining quota|need[:：]?\s*[＄$€]|insufficient|out of credits/i.test(opts.error)
+      ? "exhausted"
+      : opts.errorClass;
   const now = nowIso();
   await getTurso().execute({
     sql: `UPDATE api_keys SET
@@ -167,8 +179,8 @@ export async function bumpKey(
       now,
       now,
       opts.error ?? null,
-      opts.errorClass === "disabled" ? "disabled" : "",
-      opts.errorClass === "exhausted" ? "exhausted" : "",
+      effectiveClass === "disabled" ? "disabled" : "",
+      effectiveClass === "exhausted" ? "exhausted" : "",
       opts.ok ? 1 : 0,
       id,
     ],

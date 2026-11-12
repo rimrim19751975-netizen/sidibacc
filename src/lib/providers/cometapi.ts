@@ -185,8 +185,11 @@ export const cometApiAdapter: ProviderAdapter = {
     // عائلة Seedance عبر /v1/videos (multipart) — الأسرع؛ ما عدا ذلك → Grok عبر /grok/v1/videos/generations
     if (/^(doubao-)?seedance/.test(model)) return seedanceCreate(key, model, input);
     // فيديو Grok: الصورة الأولى تمرر داخل كائن image.url وفق التوثيق
+    // حارس الرصيد هنا أيضًا: grok يُحاسَب مقدمًا بالثانية — سقف المدة نفسه يحمي الأرصدة الصغيرة
     const body: Record<string, unknown> = { model, prompt: String(input.prompt ?? "") };
-    if (typeof input.duration === "number") body.duration = input.duration;
+    if (typeof input.duration === "number") {
+      body.duration = Math.min(MAX_VIDEO_SECONDS, Math.max(4, Math.round(input.duration)));
+    }
     if (typeof input.aspect_ratio === "string" && input.aspect_ratio !== "auto") body.aspect_ratio = input.aspect_ratio;
     if (typeof input.resolution === "string" && input.resolution !== "auto") body.resolution = input.resolution;
     if (typeof input.image_url === "string" && input.image_url) body.image = { url: input.image_url };

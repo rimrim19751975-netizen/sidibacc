@@ -22,6 +22,19 @@ const cases: Array<{
     expected: "exhausted",
   },
   {
+    name: "pre-consume + كلمات مصادقة في نفس الرسالة → exhausted لا disabled (حادثة التعطيل الدائم)",
+    status: 403,
+    message:
+      "pre-consume quota failed, organization and owner combined remaining quota: ＄0.612376, need: ＄0.840000 (unauthorized request)",
+    expected: "exhausted",
+  },
+  {
+    name: "رسالة رصيد صريحة بحالة 401 → exhausted",
+    status: 401,
+    message: "organization remaining quota: ＄0.100000, need: ＄0.520000",
+    expected: "exhausted",
+  },
+  {
     name: "403 بلا رسالة رصيد صريحة → disabled",
     status: 403,
     message: "Forbidden",

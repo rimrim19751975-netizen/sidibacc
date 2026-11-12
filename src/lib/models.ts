@@ -15,9 +15,12 @@ export interface ModelDef {
 const KIE_IMAGE_MODEL = process.env.KIE_IMAGE_MODEL || "gpt-image-2-6/flare-text-to-image";
 const KIE_VIDEO_MODEL = process.env.KIE_VIDEO_MODEL || "grok-imagine-video-1-5-preview";
 // أسماء CometAPI من كتالوجها الحيّ (GET https://api.cometapi.com/api/models) — مُتحقَّق منه فعليًا 2026-11:
-// الصور: gpt-image-2.5-flare (نفس عائلة flare المدعومة رسميًا مع خلفية شفافة) — الفيديو: grok-imagine-video
+// الصور: gpt-image-2.5-flare (نفس عائلة flare المدعومة رسميًا مع خلفية شفافة)
+// فيديو الاسم القديم (grok-imagine-video): بطيء ومكلف (＄0.105/ث) — نوجّه الاسم القديم نفسه
+// إلى doubao-seedance-2-0-mini الاقتصادي (＄0.032/ث → فيديو 5 ثوانٍ ≈ ＄0.16) حتى تكتمل
+// المهام العالقة بالأرصدة المجانية الصغيرة، ويبقى grok متاحًا عبر kie عند إضافة مفتاح له
 const COMETAPI_IMAGE_MODEL = process.env.COMETAPI_IMAGE_MODEL || "gpt-image-2.5-flare";
-const COMETAPI_VIDEO_MODEL = process.env.COMETAPI_VIDEO_MODEL || "grok-imagine-video";
+const COMETAPI_VIDEO_MODEL = process.env.COMETAPI_VIDEO_MODEL || "doubao-seedance-2-0-mini";
 // الفيديو السريع: عائلة Seedance عبر POST /v1/videos — الأسرع لدى CometAPI
 const COMETAPI_SEEDANCE_MODEL = process.env.COMETAPI_SEEDANCE_MODEL || "doubao-seedance-2-0-fast";
 // الفيديو الاقتصادي: doubao-seedance-2-0-mini — الأرخص في العائلة (480p ≈ $0.032/ث → فيديو 5 ثوانٍ ≈ $0.16)

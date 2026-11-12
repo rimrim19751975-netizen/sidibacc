@@ -13,11 +13,12 @@ export const dynamic = "force-dynamic";
 export async function GET(): Promise<Response> {
   const db = await dbStatus();
   const ok = db === "connected";
-  // مضخة الطابور: كل نبضة جهوزية (مراقبة وقت التشغيل مثلًا) تستأنف مهمتين عالقتين في الخلفية
+  // مضخة الطابور: كل نبضة جهوزية (مراقبة وقت التشغيل مثلًا) تستأنف 4 مهام عالقة في الخلفية —
+  // النبضات الخارجية (كرون المراقبة) هي ما يُبقي الطابور يتحرك حتى بلا حركة مستخدم
   if (ok) {
     try {
       after(async () => {
-        await pumpQueue(2).catch(() => {});
+        await pumpQueue(4).catch(() => {});
       });
     } catch {}
   }
